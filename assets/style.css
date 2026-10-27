@@ -214,6 +214,23 @@ li { margin-bottom: .4em; }
   color: #b9c2c9;
 }
 
+/* ---------- фото в тексте ---------- */
+
+.photo { margin: 30px 0 0; }
+
+.photo img {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+}
+
+.photo figcaption {
+  margin-top: 10px;
+  font-size: .86rem;
+  color: var(--muted);
+}
+
 /* ---------- buttons ---------- */
 
 .btn {
