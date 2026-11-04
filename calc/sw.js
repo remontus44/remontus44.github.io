@@ -1,12 +1,15 @@
 /* Ремонтус44 — калькулятор: офлайн-кеш. Меняете файлы — поднимите версию. */
 
-var CACHE = "remontus44-calc-v4";
+var CACHE = "remontus44-calc-v11";
 
 var ASSETS = [
   "./",
   "./index.html",
   "./app.css",
   "./app.js",
+  "./data/cars.js",
+  "./data/labor.js",
+  "./data/guides.js",
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",

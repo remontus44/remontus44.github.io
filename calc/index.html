@@ -83,8 +83,23 @@
   </div>
 </div>
 
+<div class="sheet sheet--guide" id="guideSheet" hidden>
+  <div class="sheet__backdrop" data-gclose></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="guideTitle">
+    <div class="sheet__handle" aria-hidden="true"></div>
+    <div class="sheet__head">
+      <h2 id="guideTitle">Как выполнить</h2>
+      <button class="sheet__close" type="button" data-gclose aria-label="Закрыть">×</button>
+    </div>
+    <div class="sheet__body guide" id="guideBody"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<script src="data/cars.js"></script>
+<script src="data/labor.js"></script>
+<script src="data/guides.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
