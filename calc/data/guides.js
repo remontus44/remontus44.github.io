@@ -4,7 +4,7 @@
    только по заводскому руководству. */
 
 window.GUIDES = {
-  version: "2026.11.2",
+  version: "2026.11.7",
 
   byEngine: {
     "G4FC": { note: "G4FC: цепь ГРМ с гидронатяжителем. Метки на шестернях и на корпусе должны совпасть; после замены цепи проверьте давление масла и состояние успокоителей." },
@@ -19,6 +19,331 @@ window.GUIDES = {
     "N20B20": { note: "N20B20: цепь ГРМ. Нужны фиксаторы распредвалов и коленвала; болты звёзд одноразовые. После сборки — проверка фаз и адаптация." },
     "OM651": { note: "OM651: цепь ГРМ сзади. Работа трудоёмкая, нужны фиксаторы; болты ГБЦ и звёзд — одноразовые." },
     "4B11": { note: "4B11: цепь ГРМ. Метки на шестернях, натяжитель с храповиком. Прокладка клапанной крышки одноразовая." }
+  },
+
+  /* Точные моменты для проверенных двигателей.
+     Значения взяты из опубликованных руководств и техинструкций;
+     перед применением сверяйте код, ревизию и состояние резьбы. */
+  torques: {
+    "G4FC": {
+      head_gasket: [
+        { part: "Болты ГБЦ (10 шт.)", value: "29,4 Н·м + 90° + 90°", note: "только новые болты, затяжка по схеме", critical: true },
+        { part: "Болты распредвала, 1-й этап", value: "5,9 / 9,8 Н·м", note: "M6 / M8", critical: true },
+        { part: "Болты распредвала, 2-й этап", value: "11,8–13,7 / 18,6–22,6 Н·м", note: "M6 / M8", critical: true },
+        { part: "Болт муфты CVVT", value: "63,7–73,5 Н·м", note: "фиксировать распредвал", critical: true },
+        { part: "Клапанная крышка", value: "3,9–5,9 → 7,8–9,8 Н·м", note: "два этапа, по схеме" }
+      ],
+      head_remove: [
+        { part: "Болты ГБЦ (10 шт.)", value: "29,4 Н·м + 90° + 90°", note: "только новые болты", critical: true },
+        { part: "Болт муфты CVVT", value: "63,7–73,5 Н·м", note: "фиксировать распредвал", critical: true },
+        { part: "Клапанная крышка", value: "3,9–5,9 → 7,8–9,8 Н·м", note: "два этапа" }
+      ],
+      valve_cover: [
+        { part: "Клапанная крышка", value: "3,9–5,9 → 7,8–9,8 Н·м", note: "два этапа, по схеме", critical: false },
+        { part: "Катушки зажигания", value: "9,8–11,8 Н·м", note: "" },
+        { part: "Свечи", value: "20–30 Н·м", note: "по типу свечи" }
+      ],
+      timing_chain: [
+        { part: "Натяжитель цепи", value: "по руководству", note: "проверьте ревизию двигателя", critical: true },
+        { part: "Крышка ГРМ", value: "9,8–11,8 Н·м", note: "M6" },
+        { part: "Болты распредвала, 1-й этап", value: "5,9 / 9,8 Н·м", note: "M6 / M8", critical: true },
+        { part: "Болты распредвала, 2-й этап", value: "11,8–13,7 / 18,6–22,6 Н·м", note: "M6 / M8", critical: true }
+      ],
+      vvt: [
+        { part: "Болт муфты CVVT", value: "63,7–73,5 Н·м", note: "фиксировать распредвал", critical: true },
+        { part: "Клапан OCV", value: "9,8–11,8 Н·м", note: "" },
+        { part: "Клапанная крышка", value: "3,9–5,9 → 7,8–9,8 Н·м", note: "два этапа" }
+      ]
+    },
+    "21129": {
+      head_gasket: [
+        { part: "Болты ГБЦ", value: "20–25 Н·м + 90° + 90°", note: "три этапа, новые болты", critical: true },
+        { part: "Болты постели распредвалов", value: "8–10 Н·м", note: "" },
+        { part: "Клапанная крышка", value: "7–9 Н·м", note: "" },
+        { part: "Свечи", value: "20–30 Н·м", note: "по типу свечи" }
+      ],
+      head_remove: [
+        { part: "Болты ГБЦ", value: "20–25 Н·м + 90° + 90°", note: "три этапа, новые болты", critical: true },
+        { part: "Болты постели распредвалов", value: "8–10 Н·м", note: "" },
+        { part: "Клапанная крышка", value: "7–9 Н·м", note: "" }
+      ],
+      valve_cover: [
+        { part: "Клапанная крышка", value: "7–9 Н·м", note: "" },
+        { part: "Свечи", value: "20–30 Н·м", note: "по типу свечи" }
+      ],
+      timing_belt: [
+        { part: "Болт натяжителя ремня", value: "30–36 Н·м", note: "" },
+        { part: "Болты шкивов распредвалов", value: "70–83 Н·м", note: "фиксировать валы", critical: true },
+        { part: "Болт шкива коленвала", value: "95–115 Н·м", note: "" }
+      ],
+      shortblock: [
+        { part: "Крышки коренных подшипников", value: "70–86 Н·м", note: "по схеме", critical: true },
+        { part: "Шатунные болты", value: "18–22 Н·м + 130–140°", note: "критично", critical: true },
+        { part: "Маховик", value: "75–85 Н·м", note: "по схеме", critical: true },
+        { part: "Поддон", value: "5–8 Н·м", note: "" }
+      ],
+      oil_pan: [
+        { part: "Поддон", value: "5–8 Н·м", note: "" },
+        { part: "Сливная пробка", value: "25–30 Н·м", note: "с новой шайбой" }
+      ],
+      oil_pump: [
+        { part: "Масляный насос", value: "9–10 Н·м", note: "" },
+        { part: "Поддон", value: "5–8 Н·м", note: "" }
+      ],
+      pump: [
+        { part: "Водяной насос", value: "7–8 Н·м", note: "" },
+        { part: "Термостат", value: "16–22 Н·м", note: "" }
+      ],
+      thermostat: [
+        { part: "Крепление термостата", value: "16–22 Н·м", note: "" }
+      ],
+      exhaust_gasket: [
+        { part: "Гайки катколлектора", value: "21–25 Н·м", note: "не срывать шпильки" }
+      ],
+      crank_pulley: [
+        { part: "Болт шкива коленвала", value: "95–115 Н·м", note: "фиксировать коленвал", critical: true },
+        { part: "Болт натяжителя ремня", value: "30–36 Н·м", note: "" }
+      ]
+    },
+    "K4M": {
+      head_gasket: [
+        { part: "Болты ГБЦ", value: "20 Н·м + 234–246°", note: "новые болты, по схеме", critical: true },
+        { part: "Болты крышек распредвала", value: "9,9–12,1 Н·м", note: "" },
+        { part: "Клапанная крышка", value: "8 → 12 Н·м", note: "по схеме, затем повторно 12 Н·м", critical: false }
+      ],
+      head_remove: [
+        { part: "Болты ГБЦ", value: "20 Н·м + 234–246°", note: "новые болты", critical: true },
+        { part: "Болты крышек распредвала", value: "9,9–12,1 Н·м", note: "" },
+        { part: "Клапанная крышка", value: "8 → 12 Н·м", note: "по схеме" }
+      ],
+      valve_cover: [
+        { part: "Клапанная крышка", value: "8 → 12 Н·м", note: "по схеме, затем повторно 12 Н·м" }
+      ],
+      timing_belt: [
+        { part: "Гайка натяжного ролика", value: "45 Н·м", note: "" },
+        { part: "Верхняя крышка ГРМ M10", value: "44 Н·м", note: "" },
+        { part: "Верхняя крышка ГРМ M8", value: "22 Н·м", note: "" },
+        { part: "Нижняя крышка ГРМ", value: "8 Н·м", note: "" }
+      ],
+      oil_pan: [
+        { part: "Масляный картер к блоку", value: "8 → 14 Н·м", note: "два этапа" },
+        { part: "Картер сцепления", value: "8 → 44 Н·м", note: "" }
+      ],
+      oil_pump: [
+        { part: "Масляный насос", value: "27 Н·м", note: "" }
+      ],
+      pump: [
+        { part: "Водяной насос M6", value: "11 Н·м", note: "" },
+        { part: "Водяной насос M8", value: "22 Н·м", note: "" }
+      ],
+      intake_gasket: [
+        { part: "Впускная труба", value: "25 Н·м", note: "" }
+      ],
+      exhaust_gasket: [
+        { part: "Выпускной коллектор", value: "18 Н·м", note: "" }
+      ],
+      shortblock: [
+        { part: "Крышки коренных", value: "25 Н·м + 42–52°", note: "критично", critical: true },
+        { part: "Шатунные гайки", value: "20 Н·м + 39–51°", note: "критично", critical: true },
+        { part: "Маховик", value: "25 Н·м + 44–56°", note: "новые болты", critical: true },
+        { part: "Поддон", value: "8 → 14 Н·м", note: "" }
+      ]
+    },
+    "2ZR-FE": {
+      head_gasket: [
+        { part: "Болты ГБЦ", value: "49 Н·м + 90° + 45°", note: "три этапа, новые болты", critical: true },
+        { part: "Крышка ГРМ, болты A/C", value: "25,5 Н·м", note: "" },
+        { part: "Крышка ГРМ, болты B/E", value: "51 Н·м", note: "" },
+        { part: "Крышка ГРМ, болт D", value: "10 Н·м", note: "" }
+      ],
+      head_remove: [
+        { part: "Болты ГБЦ", value: "49 Н·м + 90° + 45°", note: "новые болты", critical: true },
+        { part: "Крышка ГРМ, болты A/C", value: "25,5 Н·м", note: "" },
+        { part: "Крышка ГРМ, болты B/E", value: "51 Н·м", note: "" }
+      ],
+      valve_cover: [
+        { part: "Клапанная крышка", value: "10 Н·м", note: "" },
+        { part: "Свечи", value: "20–30 Н·м", note: "по типу свечи" }
+      ],
+      timing_chain: [
+        { part: "Натяжитель цепи", value: "12 Н·м", note: "" },
+        { part: "Крышка ГРМ, болты A/C", value: "25,5 Н·м", note: "" },
+        { part: "Крышка ГРМ, болты B/E", value: "51 Н·м", note: "" },
+        { part: "Звёзды распредвалов", value: "54 Н·м", note: "фиксировать валы", critical: true }
+      ],
+      vvt: [
+        { part: "Звезда распредвала", value: "54 Н·м", note: "с SST / без SST", critical: true },
+        { part: "Крышка ГРМ", value: "25,5 / 51 / 10 Н·м", note: "A/C, B/E, D" }
+      ],
+      oil_pan: [
+        { part: "Масляный поддон", value: "10 Н·м", note: "" },
+        { part: "Сливная пробка", value: "37 Н·м", note: "" }
+      ],
+      oil_pump: [
+        { part: "Гайка привода масляного насоса", value: "28 Н·м", note: "" },
+        { part: "Поддон", value: "10 Н·м", note: "" }
+      ],
+      pump: [
+        { part: "Водяной насос", value: "21 Н·м", note: "" }
+      ],
+      intake_gasket: [
+        { part: "Впускной коллектор", value: "28 Н·м", note: "" }
+      ],
+      crank_seal_front: [
+        { part: "Шкив коленвала", value: "190 Н·м", note: "критично", critical: true }
+      ],
+      crank_seal_rear: [
+        { part: "Маховик", value: "49 Н·м + 90°", note: "критично, новые болты", critical: true }
+      ],
+      shortblock: [
+        { part: "Шатунные болты", value: "20 Н·м + 90°", note: "критично", critical: true },
+        { part: "Крышки коренных", value: "40 Н·м + 90°", note: "критично", critical: true }
+      ],
+      mounts: [
+        { part: "Опоры двигателя LH/RH", value: "52 Н·м", note: "к кузову" },
+        { part: "Передняя опора", value: "73 Н·м", note: "" },
+        { part: "Задняя опора", value: "95 Н·м", note: "" }
+      ]
+    }
+  },
+
+  sources: {
+    "G4FC": [
+      { label: "Kia Rio UB — установка ГБЦ", url: "https://www.kiamanual.com/kia-rio/installation-170" }
+    ],
+    "21129": [
+      { label: "Моменты затяжки ВАЗ-21129", url: "https://moment-zatyazhki.ru/dvigateli/vaz-21129/" },
+      { label: "Технологическая инструкция АВТОВАЗ", url: "https://ru.djvu.online/file/OPDVp7NDM7UBQ" }
+    ],
+    "K4M": [
+      { label: "Моменты затяжки K4M", url: "https://moment-zatyazhki.ru/dvigateli/k4m/" },
+      { label: "RenaultBook — K4M", url: "https://www.renaultbook.ru/Sandero/1_p/main/service/momenty-zatyazhki-otvetstvennyh-rezbovyh-soedineniy" }
+    ],
+    "2ZR-FE": [
+      { label: "Toyota Corolla 2ZR-FE — torque specs", url: "http://corolla.automotive-manuals.com/corolla-2017/RM1000000014K0D.html" }
+    ],
+    "1GD-FTV": [
+      { label: "Toyota/Lexus EWD — Land Cruiser Prado 2.8 TD", url: "https://www.kolhosniki.ru/toyota" }
+    ],
+    "D4HB": [
+      { label: "Kia Carnival 2.2 CRDi — руководство", url: "https://www.kolhosniki.ru/lldata" }
+    ],
+    "21179": [
+      { label: "Lada XRAY — моменты затяжки", url: "https://moment-zatyazhki.ru/dvigateli/vaz-21129/" }
+    ],
+    "N20B20": [
+      { label: "BMW N20B20 — руководство", url: "https://www.kolhosniki.ru/lldata" }
+    ],
+    "OM651": [
+      { label: "Mercedes OM651 — руководство", url: "https://www.kolhosniki.ru/mitchell" }
+    ],
+    "4B11": [
+      { label: "Mitsubishi 4B11 — руководства", url: "https://mmc-manuals.ru/" }
+    ],
+    "G4NN": [
+      { label: "Kia K5 — руководство", url: "https://www.kolhosniki.ru/lldata" }
+    ]
+  },
+
+  manuals: {
+    alfaromeo: "https://www.kolhosniki.ru/jeep",
+    audi: "https://www.kolhosniki.ru/elsaonline",
+    bmw: "https://www.kolhosniki.ru/lldata",
+    brilliance: "https://www.kolhosniki.ru/lldata",
+    cadillac: "https://www.kolhosniki.ru/lldata",
+    changan: "https://www.kolhosniki.ru/lldata",
+    chery: "https://www.kolhosniki.ru/lldata",
+    chevrolet: "https://www.kolhosniki.ru/lldata",
+    chrysler: "https://www.kolhosniki.ru/jeep",
+    citroen: "https://www.kolhosniki.ru/servicebox",
+    daewoo: "https://www.kolhosniki.ru/lldata",
+    dodge: "https://www.kolhosniki.ru/jeep",
+    dongfeng: "https://www.kolhosniki.ru/lldata",
+    exeed: "https://www.kolhosniki.ru/lldata",
+    faw: "https://www.kolhosniki.ru/lldata",
+    fiat: "https://www.kolhosniki.ru/jeep",
+    ford: "https://www.kolhosniki.ru/fordtis",
+    gaz: "https://www.kolhosniki.ru/lldata",
+    geely: "https://www.kolhosniki.ru/lldata",
+    greatwall: "https://www.kolhosniki.ru/lldata",
+    haval: "https://www.kolhosniki.ru/lldata",
+    honda: "https://www.kolhosniki.ru/lldata",
+    hyundai: "https://www.kolhosniki.ru/lldata",
+    infiniti: "https://www.kolhosniki.ru/nissan",
+    isuzu: "https://www.kolhosniki.ru/lldata",
+    jac: "https://www.kolhosniki.ru/lldata",
+    jaecoo: "https://www.kolhosniki.ru/lldata",
+    jaguar: "https://www.kolhosniki.ru/vedrover",
+    jeep: "https://www.kolhosniki.ru/jeep",
+    kia: "https://www.kiamanual.com/",
+    lada: "https://lada-vesta.com.ru/html/momenty.html",
+    landrover: "https://www.kolhosniki.ru/vedrover",
+    lexus: "https://www.kolhosniki.ru/toyota",
+    lifan: "https://www.kolhosniki.ru/lldata",
+    mazda: "https://www.kolhosniki.ru/lldata",
+    mercedes: "https://www.kolhosniki.ru/mitchell",
+    mini: "https://www.kolhosniki.ru/lldata",
+    mitsubishi: "https://mmc-manuals.ru/",
+    mmc_manuals: "https://mmc-manuals.ru/",
+    moskvich: "https://www.kolhosniki.ru/lldata",
+    nissan: "https://www.kolhosniki.ru/nissan",
+    omoda: "https://www.kolhosniki.ru/lldata",
+    opel: "https://www.kolhosniki.ru/tis2000",
+    peugeot: "https://www.kolhosniki.ru/servicebox",
+    porsche: "https://www.kolhosniki.ru/poses",
+    ravon: "https://www.kolhosniki.ru/lldata",
+    renault: "https://www.renaultbook.ru/",
+    seat: "https://www.kolhosniki.ru/elsaonline",
+    skoda: "https://www.kolhosniki.ru/elsaonline",
+    ssangyong: "https://www.kolhosniki.ru/lldata",
+    subaru: "https://www.kolhosniki.ru/lldata",
+    suzuki: "https://www.kolhosniki.ru/lldata",
+    tank: "https://www.kolhosniki.ru/lldata",
+    toyota: "https://www.kolhosniki.ru/toyota",
+    uaz: "https://www.kolhosniki.ru/lldata",
+    volkswagen: "https://www.kolhosniki.ru/elsaonline",
+    volvo: "https://www.kolhosniki.ru/lldata",
+    zotye: "https://www.kolhosniki.ru/lldata",
+    gmc: "https://www.kolhosniki.ru/lldata",
+    ram: "https://www.kolhosniki.ru/jeep",
+    bentley: "https://www.kolhosniki.ru/elsaonline",
+    lincoln: "https://www.kolhosniki.ru/fordtis",
+    daihatsu: "https://www.kolhosniki.ru/lldata",
+    pontiac: "https://www.kolhosniki.ru/lldata",
+    acura: "https://www.kolhosniki.ru/lldata",
+    mg: "https://www.kolhosniki.ru/lldata",
+    hummer: "https://www.kolhosniki.ru/lldata",
+    buick: "https://www.kolhosniki.ru/lldata",
+    datsun: "https://www.kolhosniki.ru/nissan",
+    saab: "https://www.kolhosniki.ru/lldata",
+    smart: "https://www.kolhosniki.ru/mitchell",
+    mercury: "https://www.kolhosniki.ru/fordtis",
+    saturn: "https://www.kolhosniki.ru/lldata",
+    scion: "https://www.kolhosniki.ru/toyota",
+    oldsmobile: "https://www.kolhosniki.ru/lldata",
+    srt: "https://www.kolhosniki.ru/jeep",
+    freightliner: "https://www.kolhosniki.ru/mitchell",
+    workhorse: "https://www.kolhosniki.ru/lldata",
+    plymouth: "https://www.kolhosniki.ru/lldata"
+  },
+
+  programs: {
+    alld: "https://www.kolhosniki.ru/lldata",
+    allda: "https://www.kolhosniki.ru/lldata",
+    mitchell: "https://www.kolhosniki.ru/mitchell",
+    elsa: "https://superetka.com/elsa/",
+    etka: "https://superetka.com/etka/",
+    gds: "https://superetka.com/gds",
+    wis: "https://superetka.com/wisnet",
+    toyota: "https://www.kolhosniki.ru/toyota",
+    fordtis: "https://www.kolhosniki.ru/fordtis",
+    jeep: "https://www.kolhosniki.ru/jeep",
+    tis: "https://www.kolhosniki.ru/tis2000",
+    servicebox: "https://www.kolhosniki.ru/servicebox",
+    poses: "https://www.kolhosniki.ru/poses",
+    vedrover: "https://www.kolhosniki.ru/vedrover",
+    mmcTIS: "https://mmc-manuals.ru/",
+    vindecode: "https://www.kolhosniki.ru/vindecode"
   },
 
   byOp: {

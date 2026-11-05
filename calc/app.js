@@ -133,6 +133,31 @@
   var LABOR = window.LABOR && window.LABOR.byEngine ? window.LABOR : null;
   var GUIDES = window.GUIDES && window.GUIDES.byOp ? window.GUIDES : null;
 
+  /* ---------- источники руководств и программ kolhosniki ---------- */
+
+  var BRAND_PROGRAMS = {
+    volkswagen: ["elsa", "etka"], audi: ["elsa", "etka"], skoda: ["elsa", "etka"], seat: ["elsa", "etka"], bentley: ["elsa", "etka"],
+    toyota: ["toyota", "etka"], lexus: ["toyota", "etka"], scion: ["toyota", "etka"],
+    ford: ["fordtis"], lincoln: ["fordtis"], mercury: ["fordtis"],
+    mercedes: ["wis"], bmw: ["aldl"], mini: ["aldl"],
+    kia: ["gds"], hyundai: ["gds"],
+    nissan: ["nissan"], infiniti: ["nissan"], datsun: ["nissan"],
+    jeep: ["jeep"], dodge: ["jeep"], chrysler: ["jeep"], ram: ["jeep"], fiat: ["jeep"], alfaromeo: ["jeep"], srt: ["jeep"],
+    mitsubishi: ["mmcTIS"],
+    opel: ["tis"],
+    peugeot: ["servicebox"], citroen: ["servicebox"],
+    porsche: ["poses"],
+    landrover: ["vedrover"], jaguar: ["vedrover"],
+    honda: ["aldl"], acura: ["aldl"],
+    chevrolet: ["aldl"], gmc: ["aldl"], buick: ["aldl"], pontiac: ["aldl"], saturn: ["aldl"], oldsmobile: ["aldl"], cadillac: ["aldl"], hummer: ["aldl"], saab: ["aldl"],
+    mazda: ["aldl"], subaru: ["aldl"], suzuki: ["aldl"], volvo: ["aldl"], renault: ["aldl"], lada: ["aldl"], uaz: ["aldl"], gaz: ["aldl"], moskvich: ["aldl"], chery: ["aldl"], haval: ["aldl"], geely: ["aldl"], greatwall: ["aldl"], changan: ["aldl"], faw: ["aldl"], lifan: ["aldl"], jac: ["aldl"], dongfeng: ["aldl"], zotye: ["aldl"], brilliance: ["aldl"], omoda: ["aldl"], jaecoo: ["aldl"], exeed: ["aldl"], tank: ["aldl"],
+    volvo: ["aldl"]
+  };
+
+  var PROGRAM_LABELS = {
+    elsa: "ELSA Web / ETKA", etka: "ETKA", toyota: "Toyota, Lexus EWD", fordtis: "Ford TIS", wis: "Mercedes WIS", aldl: "Alldata", gds: "KIA/Hyundai GDS", nissan: "Nissan TIS", jeep: "FCA Wireless", mmcTIS: "Mitsubishi TIS / mmc-manuals", tis: "Opel TIS", servicebox: "PSA ServiceBox", poses: "Porsche POSES", vedrover: "Land Rover / Jaguar TIS"
+  };
+
   /* ---------- утилиты ---------- */
 
   var $ = function (id) { return document.getElementById(id); };
@@ -309,13 +334,45 @@
 
   /* ---------- цены и итоги ---------- */
 
+  function roundPrice(v) {
+    return Math.round(v / 100) * 100;
+  }
+
+  function priceFor(service, nh) {
+    if (!service || service.perGram) return null;
+    var baseHours = service.tmin ? service.tmin / 60 : 0;
+    if (nh == null || !baseHours) return { min: service.min, max: service.max };
+    var factor = nh / baseHours;
+    factor = Math.max(0.8, Math.min(2.2, factor));
+    return {
+      min: roundPrice(service.min * factor),
+      max: roundPrice(service.max * factor)
+    };
+  }
+
+  function repriceCart() {
+    var car = selectedCar();
+    state.cart.forEach(function (item) {
+      var s = byId(item.id);
+      if (!s) return;
+      var nh = normFor(s, car);
+      if (nh != null) {
+        item.nh = nh;
+        item.car = carShort(car);
+      } else {
+        delete item.nh;
+        delete item.car;
+      }
+    });
+  }
+
   function unitPrice(item) {
     var d = def(item);
     if (d.perGram) {
       var p = d.base + (item.grams || GRAM_DEFAULT) * d.perGram;
       return { min: p, max: p };
     }
-    return { min: d.min, max: d.max };
+    return priceFor(d, item.nh);
   }
 
   function itemMinutes(item, d) {
@@ -393,8 +450,9 @@
     for (var i = 0; i < state.cart.length; i++) {
       if (state.cart[i].id === s.id) { inCart = state.cart[i]; break; }
     }
-    var price = s.perGram ? "от " + nums(s.base) + " ₽ + газ" : rubRange(s.min, s.max);
     var nh = normFor(s, car);
+    var sp = priceFor(s, nh);
+    var price = s.perGram ? "от " + nums(s.base) + " ₽ + газ" : rubRange(sp.min, sp.max);
     var na = !!(car && s.norm && LABOR && LABOR.byEngine[car.engine.id] && nh == null);
     var time;
     var timeClass = "svc__time";
@@ -488,7 +546,7 @@
         '</div>' +
         '<div class="garage__count">' + count + " " + plural(count, "норматив", "норматива", "нормативов") + '</div>' +
       '</div>' +
-      '<p class="garage__meta">Время в списке — из базы нормо-часов. Цена остаётся по прайсу, точную сумму называю после осмотра.<br>Кнопка «?» у работы — пошаговая инструкция, схема и моменты затяжки.</p>';
+      '<p class="garage__meta">Время и цена в списке пересчитаны по нормо-часам этого двигателя. Базовая цена — по прайсу, точную сумму называю после осмотра.<br>Кнопка «?» у работы — пошаговая инструкция, схема и моменты затяжки.</p>';
     } else {
       html += '<p class="garage__hint">Выберите авто — подставлю справочные нормо-часы для работ по двигателю.</p>';
     }
@@ -782,6 +840,9 @@
       ? byEngine.note
       : "Этот двигатель: " + layout + ". Схема общая для своего типа, критические моменты — по заводскому руководству.";
     var nh = normFor(s, car);
+    var spec = GUIDES.torques && GUIDES.torques[engine.code];
+    var exact = !!(spec && spec[key]);
+    var opTorques = exact ? spec[key] : (g.torques || []);
 
     var steps = (g.steps || []).map(function (t) {
       return '<li>' + esc(t) + '</li>';
@@ -791,12 +852,34 @@
       return '<span class="guide__tool">' + esc(t) + '</span>';
     }).join("");
 
-    var torques = (g.torques || []).map(function (t) {
+    var torques = opTorques.map(function (t) {
       return '<tr>' +
         '<td>' + esc(t.part) + '</td>' +
         '<td class="' + (t.critical ? "guide__critical" : "") + '">' + esc(t.value) + '</td>' +
         '<td>' + esc(t.note || "") + '</td>' +
       '</tr>';
+    }).join("");
+
+    var srcs = (GUIDES.sources && GUIDES.sources[engine.code]) || [];
+    var sourceHtml = srcs.length
+      ? '<p class="guide__src">Источник моментов: ' + srcs.map(function (x) {
+          return '<a href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.label) + '</a>';
+        }).join(" · ") + '</p>'
+      : "";
+
+    var query = encodeURIComponent(car.make.name + " " + car.model.name + " " + car.year + " service manual");
+    var manualList = [];
+    var ownManual = GUIDES.manuals && GUIDES.manuals[car.make.id];
+    if (ownManual) manualList.push({ label: "Руководство " + car.make.name, url: ownManual });
+    var brandPrograms = (typeof BRAND_PROGRAMS !== "undefined" && BRAND_PROGRAMS[car.make.id]) || [];
+    brandPrograms.forEach(function (k) {
+      var purl = GUIDES.programs && GUIDES.programs[k];
+      if (purl) manualList.push({ label: (typeof PROGRAM_LABELS !== "undefined" && PROGRAM_LABELS[k]) || k, url: purl });
+    });
+    manualList.push({ label: "ManualsLib", url: "https://www.manualslib.com/search/?q=" + query });
+    manualList.push({ label: "kolhosniki.ru", url: "https://www.kolhosniki.ru/" });
+    var manualHtml = manualList.map(function (x) {
+      return '<a class="guide__link" href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.label) + '</a>';
     }).join("");
 
     var seq = g.sequence ? boltSvg(g.sequence, engine) : "";
@@ -806,7 +889,8 @@
         '<div class="guide__car">' + esc(car.make.name + " " + car.model.name + " " + car.engine.name + " (" + car.engine.code + "), " + car.year) + '</div>' +
         '<h3>' + esc(g.title || s.name) + '</h3>' +
         '<div class="guide__meta">' + (nh != null ? "Норматив: " + fmtNorm(nh) : "Норматив: —") +
-          " · " + engine.cyl + " цил. · " + (engine.timing === "chain" ? "цепь" : "ремень") + (engine.turbo ? " · турбо" : "") + '</div>' +
+          " · " + engine.cyl + " цил. · " + (engine.timing === "chain" ? "цепь" : "ремень") + (engine.turbo ? " · турбо" : "") +
+          (exact ? " · точные моменты" : "") + '</div>' +
       '</div>' +
       '<div class="guide__art">' + art + '</div>' +
       (note ? '<div class="guide__engine-note">' + esc(note) + '</div>' : '') +
@@ -818,8 +902,12 @@
       (torques
         ? '<table class="guide__table"><thead><tr><th>Соединение</th><th>Момент</th><th>Примечание</th></tr></thead><tbody>' + torques + '</tbody></table>'
         : '<p class="guide__plain">Для этой работы моменты не требуются.</p>') +
+      sourceHtml +
+      '<h4>Руководства</h4><div class="guide__links">' + manualHtml + '</div>' +
       (g.warning ? '<div class="guide__warn">' + esc(g.warning) + '</div>' : '') +
-      '<p class="guide__src">Моменты для некритичных креплений — ориентировочные. Для ГБЦ, шатунов, коренных, маховика, форсунок и турбины используйте заводское руководство для этого двигателя. Схема затяжки тиловая: количество болтов и порядок уточняйте по головке.</p>';
+      '<p class="guide__src">' + (exact
+        ? "Моменты взяты из опубликованного руководства. Перед работой сверьте код двигателя, ревизию и состояние резьбы: у одного кода бывают разные болты и процедуры."
+        : "Моменты для некритичных креплений — ориентировочные. Для ГБЦ, шатунов, коренных, маховика, форсунок и турбины используйте заводское руководство для этого двигателя. Схема затяжки типовая: количество болтов и порядок уточняйте по головке.") + '</p>';
   }
 
   /* ---------- шторка инструкции ---------- */
@@ -1128,6 +1216,7 @@
   /* ---------- события ---------- */
 
   load();
+  repriceCart();
   renderChips();
   renderList();
   renderBar();
@@ -1179,10 +1268,12 @@
       return;
     }
 
+    repriceCart();
     save();
     renderList();
+    renderBar();
+    if (sheetOpen) renderSheet();
   });
-
   $("list").addEventListener("click", function (e) {
     var gbtn = e.target.closest("[data-guide]");
     if (gbtn) {
@@ -1192,8 +1283,10 @@
 
     if (e.target.closest("[data-vreset]")) {
       state.vehicle = null;
+      repriceCart();
       save();
       renderList();
+      renderBar();
       toast("Подбор сброшен");
       return;
     }
@@ -1211,6 +1304,12 @@
 
     if (added) {
       if (added.qty < 99) added.qty += 1;
+      var curCar = selectedCar();
+      var curNh = normFor(s, curCar);
+      if (curNh != null) {
+        added.nh = curNh;
+        added.car = carShort(curCar);
+      }
     } else {
       var item = { id: id, qty: 1 };
       if (s.perGram) item.grams = GRAM_DEFAULT;
