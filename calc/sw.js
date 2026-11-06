@@ -1,6 +1,6 @@
 /* Ремонтус44 — калькулятор: офлайн-кеш. Меняете файлы — поднимите версию. */
 
-var CACHE = "remontus44-calc-v16";
+var CACHE = "remontus44-calc-v18";
 
 var ASSETS = [
   "./",

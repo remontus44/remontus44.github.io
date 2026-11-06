@@ -22,7 +22,12 @@
 <header class="head">
   <div class="head__row">
     <span class="head__brand">Ремонтус44</span>
-    <span class="head__title">калькулятор</span>
+    <span class="head__right">
+      <span class="head__title">калькулятор</span>
+      <button class="head__settings" id="openSettings" type="button" aria-label="Настройки" title="Настройки">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </span>
   </div>
 
   <div class="search">
@@ -49,6 +54,9 @@
   <button class="iconbtn" id="quickCopy" type="button" aria-label="Скопировать смету">
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
   </button>
+  <button class="iconbtn" id="quickPdf" type="button" aria-label="Смета в PDF">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+  </button>
 </div>
 
 <div class="sheet" id="sheet" hidden>
@@ -72,12 +80,14 @@
           <span class="totals__label">Итого</span>
           <span class="totals__sum" id="sheetSum">0 ₽</span>
         </div>
+        <div class="totals__breakdown" id="sheetBreakdown"></div>
         <div class="totals__time" id="sheetTime">—</div>
       </div>
       <div class="sheet__actions">
-        <button class="btn btn--primary" id="copyBtn" type="button">Копировать</button>
+        <button class="btn btn--primary" id="pdfBtn" type="button">PDF / печать</button>
+        <button class="btn btn--ghost" id="copyBtn" type="button">Копировать</button>
         <button class="btn btn--ghost" id="shareBtn" type="button">Поделиться</button>
-        <button class="btn btn--plain" id="clearBtn" type="button">Очистить</button>
+        <button class="btn btn--plain btn--wide" id="clearBtn" type="button">Очистить</button>
       </div>
     </div>
   </div>
@@ -95,7 +105,88 @@
   </div>
 </div>
 
+<div class="sheet sheet--set" id="setSheet" hidden>
+  <div class="sheet__backdrop" data-sclose></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="setTitle">
+    <div class="sheet__handle" aria-hidden="true"></div>
+    <div class="sheet__head">
+      <h2 id="setTitle">Настройки</h2>
+      <button class="sheet__close" type="button" data-sclose aria-label="Закрыть">×</button>
+    </div>
+    <div class="sheet__body setbody">
+
+      <section class="box">
+        <div class="box__head">
+          <div>
+            <div class="box__title">Облако</div>
+            <div class="box__sub">Одна смета на двух телефонах</div>
+          </div>
+          <span class="cloud__state" id="syncState">выключено</span>
+        </div>
+
+        <div id="syncOffBlock">
+          <p class="box__text">Создайте код на этом телефоне и введите его на втором. Смета, запчасти, жидкости и наценка будут одинаковые.</p>
+          <button class="box__btn box__btn--primary" id="syncCreate" type="button">Создать код</button>
+          <p class="box__or">или подключитесь к коду с другого телефона</p>
+          <div class="box__join">
+            <input id="syncCodeIn" type="text" inputmode="text" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="11" placeholder="XXXX-XXXX" aria-label="Код синхронизации">
+            <button class="box__btn" id="syncJoin" type="button">Подключить</button>
+          </div>
+        </div>
+
+        <div id="syncOnBlock" hidden>
+          <div class="box__codebox">
+            <div>
+              <div class="box__label">Код синхронизации</div>
+              <div class="box__code" id="syncCodeView">—</div>
+            </div>
+            <button class="box__mini" id="syncCopyCode" type="button">Копировать</button>
+          </div>
+          <div class="box__actions">
+            <button class="box__btn" id="syncPush" type="button">Сохранить в облако</button>
+            <button class="box__btn" id="syncPull" type="button">Загрузить из облака</button>
+          </div>
+          <button class="box__link" id="syncShareLink" type="button">Отправить ссылку на второй телефон</button>
+          <button class="box__link box__link--danger" id="syncOff" type="button">Отключить облако</button>
+          <p class="box__status" id="syncStatus">Готово</p>
+        </div>
+      </section>
+
+      <section class="box">
+        <div class="box__head">
+          <div>
+            <div class="box__title">Клиенту в смете</div>
+            <div class="box__sub">Сайт и телефон в PDF</div>
+          </div>
+        </div>
+        <p class="box__text">Эти контакты автоматически попадают в PDF и в текст кнопки «Поделиться».</p>
+        <div class="box__row">
+          <span class="box__label">Сайт</span>
+          <b class="box__value">remontus44.github.io</b>
+          <button class="box__mini" id="copySite" type="button">Копировать</button>
+        </div>
+        <div class="box__row">
+          <span class="box__label">Телефон</span>
+          <b class="box__value" id="phoneView">скрыт</b>
+          <button class="box__mini" id="showPhone" type="button">Показать</button>
+          <button class="box__mini" id="copyPhone" type="button" hidden>Копировать</button>
+        </div>
+      </section>
+
+      <section class="box">
+        <div class="box__title">База и обновления</div>
+        <p class="box__text">Справочник машин загружается с сайта и одинаков на всех телефонах. Смета хранится на этом телефоне, а с включённым облаком — ещё и на сервере в зашифрованном виде.</p>
+        <button class="box__btn" id="setUpdateBase" type="button">Проверить обновления базы</button>
+        <p class="box__text box__text--small">Установка на телефон: меню Chrome ⋮ → «Установить приложение» или «Добавить на главный экран».</p>
+      </section>
+
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<div class="printdoc" id="printDoc" aria-hidden="true"></div>
 
 <script src="data/cars.js"></script>
 <script src="data/labor.js"></script>

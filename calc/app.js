@@ -124,10 +124,25 @@
   ];
 
   var STORE = "remontus44.calc.v1";
+  var PAGE_TITLE = document.title;
   var GRAM_STEP = 50;
   var GRAM_MIN = 200;
   var GRAM_MAX = 1200;
   var GRAM_DEFAULT = 600;
+  var DEFAULT_MARKUP = 20;
+  var EXTRA_UNITS = ["шт", "л", "мл", "кг", "г", "м", "компл"];
+
+  var SITE_SHORT = "remontus44.github.io";
+  var SITE_URL = "https://" + SITE_SHORT + "/";
+  var PHONE_B64 = "Kzc5NjA3NDMzMDc3"; // +7 960 743-30-77
+
+  /* Облако: бесплатное key-value хранилище без регистрации.
+     В бакете лежат только зашифрованные сметы, ключ шифрования — код синхронизации. */
+  var SYNC_BASE = "https://kvdb.io/XpCdpkSVyHwsu2HjUaiUzV/";
+  var SYNC_SALT = "remontus44-sync-v1";
+  var SYNC_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+  var SYNC_LEN = 8;
+  var SYNC_MAX_BYTES = 15500;
 
   var CARS = window.CARS && Array.isArray(window.CARS.makes) ? window.CARS : null;
   var LABOR = window.LABOR && window.LABOR.byEngine ? window.LABOR : null;
@@ -385,7 +400,7 @@
     return d.tmax || 0;
   }
 
-  function totals() {
+  function serviceTotals() {
     var min = 0, max = 0, tmin = 0, tmax = 0;
     state.cart.forEach(function (item) {
       var d = def(item);
@@ -399,45 +414,603 @@
     return { min: min, max: max, tmin: tmin, tmax: tmax };
   }
 
+  function extraPrice(x) {
+    var cost = parseFloat(x && x.cost);
+    if (!isFinite(cost) || cost < 0) cost = 0;
+    var markup = parseFloat(state.markup);
+    if (!isFinite(markup) || markup < 0) markup = 0;
+    return Math.round(cost * (1 + markup / 100));
+  }
+
+  function extraLine(x) {
+    var qty = parseFloat(x && x.qty);
+    if (!isFinite(qty) || qty <= 0) qty = 1;
+    return Math.round(extraPrice(x) * qty);
+  }
+
+  function extrasTotals() {
+    var parts = 0, fluids = 0;
+    state.extras.forEach(function (x) {
+      var sum = extraLine(x);
+      if (x.kind === "fluid") fluids += sum;
+      else parts += sum;
+    });
+    return { parts: parts, fluids: fluids, min: parts + fluids, max: parts + fluids };
+  }
+
+  function totals() {
+    var s = serviceTotals();
+    var e = extrasTotals();
+    return {
+      min: s.min + e.min,
+      max: s.max + e.max,
+      tmin: s.tmin,
+      tmax: s.tmax,
+      services: s,
+      extras: e
+    };
+  }
+
+  function hasItems() {
+    return state.cart.length > 0 || state.extras.length > 0;
+  }
+
+  function qtyText(q) {
+    var n = parseFloat(q);
+    if (!isFinite(n) || n <= 0) n = 1;
+    return String(Math.round(n * 100) / 100).replace(".", ",");
+  }
+
+  function extraKindName(kind) {
+    return kind === "fluid" ? "Жидкость" : "Запчасть";
+  }
+
   /* ---------- состояние ---------- */
 
-  var state = { cat: "all", cart: [], note: true, vehicle: null };
+  var state = {
+    cat: "all",
+    cart: [],
+    extras: [],
+    markup: DEFAULT_MARKUP,
+    note: true,
+    vehicle: null,
+    syncCode: "",
+    syncUpdatedAt: 0,
+    syncDirty: false,
+    syncRev: 0
+  };
+
+  function applyState(data) {
+    state.cart = [];
+    state.extras = [];
+    state.markup = DEFAULT_MARKUP;
+    state.note = true;
+    state.vehicle = null;
+    if (!data || typeof data !== "object") return;
+
+    if (Array.isArray(data.cart)) {
+      state.cart = data.cart.filter(function (it) {
+        if (!it || !it.id) return false;
+        it.qty = Math.min(Math.max(parseInt(it.qty, 10) || 1, 1), 99);
+        if (it.custom) return !!it.name;
+        var s = byId(it.id);
+        if (!s) return false;
+        if (s.perGram) {
+          it.grams = Math.min(Math.max(parseInt(it.grams, 10) || GRAM_DEFAULT, GRAM_MIN), GRAM_MAX);
+        }
+        return true;
+      }).map(function (it) {
+        if (it.custom) return it;
+        if (typeof it.nh === "number" && it.nh > 0) it.nh = Math.min(it.nh, 80);
+        else delete it.nh;
+        if (typeof it.car !== "string") delete it.car;
+        return it;
+      });
+    }
+
+    if (typeof data.note === "boolean") state.note = data.note;
+    if (typeof data.markup === "number" && isFinite(data.markup)) {
+      state.markup = Math.min(Math.max(data.markup, 0), 500);
+    }
+
+    if (Array.isArray(data.extras)) {
+      state.extras = data.extras.filter(function (x) {
+        if (!x || typeof x.name !== "string" || !x.name.trim()) return false;
+        if (x.kind !== "part" && x.kind !== "fluid") return false;
+        var qty = parseFloat(x.qty);
+        var cost = parseFloat(x.cost);
+        return isFinite(qty) && qty > 0 && isFinite(cost) && cost >= 0;
+      }).map(function (x) {
+        return {
+          id: String(x.id || ("x-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7))),
+          kind: x.kind,
+          name: x.name.trim().slice(0, 80),
+          qty: Math.min(Math.max(parseFloat(x.qty) || 1, 0.01), 999),
+          unit: typeof x.unit === "string" && x.unit ? x.unit.slice(0, 8) : (x.kind === "fluid" ? "л" : "шт"),
+          cost: Math.max(parseFloat(x.cost) || 0, 0)
+        };
+      });
+    }
+
+    if (data.vehicle) state.vehicle = validVehicle(data.vehicle);
+  }
 
   function load() {
     try {
       var raw = localStorage.getItem(STORE);
       if (!raw) return;
       var data = JSON.parse(raw);
-      if (Array.isArray(data.cart)) {
-        state.cart = data.cart.filter(function (it) {
-          if (!it || !it.id) return false;
-          it.qty = Math.min(Math.max(parseInt(it.qty, 10) || 1, 1), 99);
-          if (it.custom) return !!it.name;
-          return !!byId(it.id);
-        }).map(function (it) {
-          if (it.custom) return it;
-          if (typeof it.nh === "number" && it.nh > 0) it.nh = Math.min(it.nh, 80);
-          else delete it.nh;
-          if (typeof it.car !== "string") delete it.car;
-          return it;
-        });
+      applyState(data);
+      if (typeof data.syncCode === "string" && /^[A-Z0-9]{8}$/.test(data.syncCode)) {
+        state.syncCode = data.syncCode;
       }
-      if (typeof data.note === "boolean") state.note = data.note;
-      if (data.vehicle) state.vehicle = validVehicle(data.vehicle);
+      if (typeof data.syncUpdatedAt === "number" && isFinite(data.syncUpdatedAt)) {
+        state.syncUpdatedAt = Math.max(0, data.syncUpdatedAt);
+      }
+      state.syncDirty = !!data.syncDirty;
     } catch (e) { /* приватный режим или битые данные — не страшно */ }
   }
 
-  function save() {
+  function persist() {
     try {
       localStorage.setItem(STORE, JSON.stringify({
         cart: state.cart,
+        extras: state.extras,
+        markup: state.markup,
         note: state.note,
-        vehicle: state.vehicle
+        vehicle: state.vehicle,
+        syncCode: state.syncCode,
+        syncUpdatedAt: state.syncUpdatedAt,
+        syncDirty: state.syncDirty
       }));
     } catch (e) { /* переполнение или приватный режим */ }
   }
 
+  function save() {
+    if (state.syncCode) {
+      state.syncRev += 1;
+      state.syncDirty = true;
+      updateSyncUi();
+      queueSync();
+    }
+    persist();
+  }
+
+  /* ---------- облачная синхронизация ---------- */
+
+  var syncTimer = null;
+  var syncBusy = false;
+  var syncMetaCache = { code: "", key: null, id: "" };
+
+  function phonePretty() {
+    var raw = atob(PHONE_B64);
+    return raw.charAt(0) + raw.charAt(1) + " " +
+      raw.substr(2, 3) + " " + raw.substr(5, 3) + "-" +
+      raw.substr(8, 2) + "-" + raw.substr(10, 2);
+  }
+
+  function formatCode(code) {
+    code = String(code || "");
+    return code.length === 8 ? code.slice(0, 4) + "-" + code.slice(4) : code;
+  }
+
+  function normalizeCode(value) {
+    var s = String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    for (var i = 0; i < s.length; i++) {
+      if (SYNC_ALPHABET.indexOf(s.charAt(i)) === -1) return "";
+    }
+    return s;
+  }
+
+  function genCode() {
+    var out = "";
+    var buf = new Uint32Array(SYNC_LEN);
+    crypto.getRandomValues(buf);
+    for (var i = 0; i < SYNC_LEN; i++) {
+      out += SYNC_ALPHABET.charAt(buf[i] % SYNC_ALPHABET.length);
+    }
+    return out;
+  }
+
+  function syncCryptoOk() {
+    return !!(window.crypto && window.crypto.subtle && window.TextEncoder &&
+      window.TextDecoder && window.btoa && window.atob);
+  }
+
+  function b64FromBuf(buf) {
+    var bytes = new Uint8Array(buf);
+    var s = "";
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
+  }
+
+  function bufFromB64(str) {
+    var s = atob(str);
+    var out = new Uint8Array(s.length);
+    for (var i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+    return out;
+  }
+
+  function hexBuf(buf) {
+    var bytes = new Uint8Array(buf);
+    var s = "";
+    for (var i = 0; i < bytes.length; i++) {
+      s += (bytes[i] < 16 ? "0" : "") + bytes[i].toString(16);
+    }
+    return s;
+  }
+
+  function syncMeta(code) {
+    if (syncMetaCache.code === code && syncMetaCache.key) {
+      return Promise.resolve(syncMetaCache);
+    }
+    var enc = new TextEncoder();
+    return Promise.all([
+      crypto.subtle.importKey("raw", enc.encode(code), "PBKDF2", false, ["deriveKey"])
+        .then(function (base) {
+          return crypto.subtle.deriveKey({
+            name: "PBKDF2",
+            salt: enc.encode(SYNC_SALT),
+            iterations: 120000,
+            hash: "SHA-256"
+          }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+        }),
+      crypto.subtle.digest("SHA-256", enc.encode("remontus44-id:" + code))
+    ]).then(function (res) {
+      var meta = { code: code, key: res[0], id: "s" + hexBuf(res[1]).slice(0, 40) };
+      syncMetaCache = meta;
+      return meta;
+    });
+  }
+
+  function syncEncrypt(meta, obj) {
+    var iv = crypto.getRandomValues(new Uint8Array(12));
+    var data = new TextEncoder().encode(JSON.stringify(obj));
+    return crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, meta.key, data)
+      .then(function (cipher) {
+        return { v: 1, t: obj.updatedAt, iv: b64FromBuf(iv), d: b64FromBuf(cipher) };
+      });
+  }
+
+  function syncDecrypt(meta, env) {
+    return crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: bufFromB64(env.iv) },
+      meta.key,
+      bufFromB64(env.d)
+    ).then(function (plain) {
+      return JSON.parse(new TextDecoder().decode(plain));
+    });
+  }
+
+  function syncCartPayload() {
+    return state.cart.map(function (it) {
+      if (it.custom) return { c: 1, n: it.name, p: it.min, q: it.qty };
+      var row = [it.id, it.qty];
+      if (it.grams) row.push(it.grams);
+      return row;
+    });
+  }
+
+  function syncExtrasPayload() {
+    return state.extras.map(function (x) {
+      return [x.kind === "fluid" ? 1 : 0, x.name, x.qty, x.unit, x.cost];
+    });
+  }
+
+  function syncPayload(stamp) {
+    return {
+      v: 1,
+      updatedAt: stamp,
+      cart: syncCartPayload(),
+      extras: syncExtrasPayload(),
+      markup: state.markup,
+      note: state.note,
+      vehicle: state.vehicle
+    };
+  }
+
+  function clampNum(value, min, max, def) {
+    var n = parseFloat(value);
+    if (!isFinite(n)) n = def;
+    return Math.min(Math.max(n, min), max);
+  }
+
+  function applyRemote(data) {
+    if (!data || data.v !== 1 || !Array.isArray(data.cart) || !Array.isArray(data.extras)) {
+      return false;
+    }
+
+    var cart = [];
+    data.cart.forEach(function (x) {
+      if (Array.isArray(x)) {
+        var id = String(x[0] || "");
+        var d = byId(id);
+        if (!d) return;
+        var item = { id: id, qty: Math.round(clampNum(x[1], 1, 99, 1)) };
+        if (d.perGram) item.grams = Math.round(clampNum(x[2], GRAM_MIN, GRAM_MAX, GRAM_DEFAULT));
+        cart.push(item);
+        return;
+      }
+      if (x && x.c === 1 && typeof x.n === "string" && x.n.trim()) {
+        var price = clampNum(x.p, 0, 100000000, 0);
+        cart.push({
+          id: "own-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
+          custom: true,
+          name: x.n.trim().slice(0, 60),
+          min: price,
+          max: price,
+          tmin: 0,
+          tmax: 0,
+          qty: Math.round(clampNum(x.q, 1, 99, 1))
+        });
+      }
+    });
+
+    var extras = [];
+    data.extras.forEach(function (x) {
+      if (!Array.isArray(x)) return;
+      var name = typeof x[1] === "string" ? x[1].trim() : "";
+      if (!name) return;
+      var fluid = x[0] === 1 || x[0] === "fluid";
+      extras.push({
+        id: "x-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+        kind: fluid ? "fluid" : "part",
+        name: name.slice(0, 80),
+        qty: clampNum(x[2], 0.01, 999, 1),
+        unit: typeof x[3] === "string" && x[3] ? x[3].slice(0, 8) : (fluid ? "л" : "шт"),
+        cost: clampNum(x[4], 0, 100000000, 0)
+      });
+    });
+
+    state.cart = cart;
+    state.extras = extras;
+    state.markup = clampNum(data.markup, 0, 500, DEFAULT_MARKUP);
+    state.note = data.note !== false;
+    state.vehicle = data.vehicle ? validVehicle(data.vehicle) : null;
+    state.syncUpdatedAt = typeof data.updatedAt === "number" ? data.updatedAt : Date.now();
+    state.syncDirty = false;
+
+    repriceCart();
+    persist();
+    renderList();
+    renderBar();
+    if (sheetOpen) renderSheet();
+    updateSyncUi();
+    return true;
+  }
+
+  function timeHM(ts) {
+    try {
+      var d = new Date(ts);
+      var now = new Date();
+      if (d.toDateString() === now.toDateString()) {
+        return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+      }
+      return d.toLocaleString("ru-RU", {
+        day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"
+      });
+    } catch (e) { return ""; }
+  }
+
+  function setSyncStatus(text) {
+    var el = $("syncStatus");
+    if (el) el.textContent = text;
+  }
+
+  function updateSyncUi() {
+    var on = !!state.syncCode;
+    var off = $("syncOffBlock");
+    var onBlock = $("syncOnBlock");
+    if (off) off.hidden = on;
+    if (onBlock) onBlock.hidden = !on;
+
+    var codeEl = $("syncCodeView");
+    if (codeEl) codeEl.textContent = on ? formatCode(state.syncCode) : "—";
+
+    var badge = $("syncState");
+    if (badge) {
+      badge.textContent = on ? (state.syncDirty ? "есть изменения" : "включено") : "выключено";
+      if (on) badge.classList.add("is-on");
+      else badge.classList.remove("is-on");
+    }
+  }
+
+  function queueSync() {
+    if (!state.syncCode) return;
+    if (!syncCryptoOk()) {
+      setSyncStatus("Браузер не поддерживает шифрование");
+      return;
+    }
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = setTimeout(function () {
+      syncTimer = null;
+      pushSync(true);
+    }, 1400);
+  }
+
+  function pushSync(silent) {
+    if (!state.syncCode) return Promise.resolve(false);
+    if (!syncCryptoOk()) {
+      setSyncStatus("Браузер не поддерживает шифрование");
+      if (!silent) toast("Этот браузер не поддерживает облако");
+      return Promise.resolve(false);
+    }
+    if (syncBusy) return Promise.resolve(false);
+
+    syncBusy = true;
+    var code = state.syncCode;
+    var stamp = Date.now();
+    var rev = state.syncRev;
+    setSyncStatus("Сохраняю…");
+
+    return syncMeta(code).then(function (meta) {
+      return syncEncrypt(meta, syncPayload(stamp)).then(function (env) {
+        var body = JSON.stringify(env);
+        if (new TextEncoder().encode(body).length > SYNC_MAX_BYTES) {
+          throw new Error("too-big");
+        }
+        return fetch(SYNC_BASE + meta.id, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: body
+        });
+      });
+    }).then(function (res) {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      state.syncUpdatedAt = stamp;
+      if (rev === state.syncRev) state.syncDirty = false;
+      persist();
+      setSyncStatus("Сохранено " + timeHM(stamp));
+      if (!silent) toast("Смета сохранена в облаке");
+      return true;
+    }).catch(function (err) {
+      state.syncDirty = true;
+      persist();
+      var big = err && err.message === "too-big";
+      setSyncStatus(big ? "Смета слишком большая для облака" : "Не удалось сохранить. Проверьте интернет.");
+      if (!silent) toast(big ? "Смета слишком большая для облака" : "Не удалось сохранить в облако");
+      return false;
+    }).then(function (result) {
+      syncBusy = false;
+      updateSyncUi();
+      return result;
+    });
+  }
+
+  function pullSync(opts) {
+    opts = opts || {};
+    var manual = !!opts.manual;
+    var join = !!opts.join;
+    var createIfEmpty = !!opts.createIfEmpty;
+
+    if (!state.syncCode) return Promise.resolve(false);
+    if (!syncCryptoOk()) {
+      setSyncStatus("Браузер не поддерживает шифрование");
+      if (manual) toast("Этот браузер не поддерживает облако");
+      return Promise.resolve(false);
+    }
+    if (syncBusy) {
+      if (manual) toast("Подождите, идёт обмен с облаком");
+      return Promise.resolve(false);
+    }
+
+    syncBusy = true;
+    var code = state.syncCode;
+    var metaRef = null;
+    setSyncStatus("Загружаю…");
+
+    return syncMeta(code).then(function (meta) {
+      metaRef = meta;
+      return fetch(SYNC_BASE + meta.id, { cache: "no-store" });
+    }).then(function (res) {
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    }).then(function (env) {
+      if (!env) {
+        if (createIfEmpty) {
+          syncBusy = false;
+          state.syncUpdatedAt = 0;
+          state.syncDirty = hasItems();
+          persist();
+          setSyncStatus("Код подключён, сохраняю смету…");
+          return pushSync(false);
+        }
+        if (manual) {
+          toast("По этому коду ещё нет сметы");
+          setSyncStatus("В облаке пусто");
+        }
+        return false;
+      }
+
+      if (!manual && typeof env.t === "number" && env.t <= state.syncUpdatedAt) {
+        setSyncStatus("Уже актуально");
+        return false;
+      }
+
+      return syncDecrypt(metaRef, env).then(function (data) {
+        if (!data || data.v !== 1 || !Array.isArray(data.cart) || !Array.isArray(data.extras)) {
+          throw new Error("bad-payload");
+        }
+
+        var sameStamp = typeof env.t === "number" && env.t === state.syncUpdatedAt;
+        if ((join || manual) && hasItems() && !sameStamp) {
+          if (!window.confirm("Заменить смету на этом телефоне сметой из облака?")) {
+            if (join) {
+              state.syncCode = "";
+              state.syncDirty = false;
+              state.syncUpdatedAt = 0;
+              persist();
+              updateSyncUi();
+              toast("Подключение отменено");
+            } else {
+              setSyncStatus("Загрузка отменена");
+            }
+            return false;
+          }
+        }
+
+        applyRemote(data);
+        if (typeof env.t === "number") state.syncUpdatedAt = env.t;
+        persist();
+        setSyncStatus("Загружено " + timeHM(env.t || Date.now()));
+        if (manual) toast(join ? "Смета загружена с другого телефона" : "Смета загружена из облака");
+        return true;
+      });
+    }).catch(function () {
+      setSyncStatus("Не удалось загрузить. Проверьте интернет и код.");
+      if (manual) toast("Не удалось загрузить из облака");
+      return false;
+    }).then(function (result) {
+      syncBusy = false;
+      updateSyncUi();
+      return result;
+    });
+  }
+
+  function syncInit() {
+    updateSyncUi();
+
+    var linkCode = "";
+    try {
+      linkCode = normalizeCode(new URLSearchParams(location.search).get("sync"));
+    } catch (e) { linkCode = ""; }
+
+    if (linkCode) {
+      try { history.replaceState(null, "", location.pathname + location.hash); } catch (e) { /* ignore */ }
+      var same = state.syncCode === linkCode;
+      state.syncCode = linkCode;
+      if (!same) state.syncUpdatedAt = 0;
+      if (!same) state.syncDirty = hasItems();
+      persist();
+      updateSyncUi();
+      setSyncStatus("Подключаю код…");
+      pullSync({ manual: true, join: !same, createIfEmpty: true });
+      return;
+    }
+
+    if (!state.syncCode) {
+      setSyncStatus("");
+      return;
+    }
+
+    if (state.syncDirty) {
+      setSyncStatus("Есть изменения, отправляю…");
+      setTimeout(function () { pushSync(true); }, 800);
+      return;
+    }
+
+    setSyncStatus(state.syncUpdatedAt
+      ? "Последняя синхронизация " + timeHM(state.syncUpdatedAt)
+      : "Облако включено");
+
+    if (state.syncUpdatedAt || !hasItems()) {
+      setTimeout(function () { pullSync({ auto: true }); }, 700);
+    }
+  }
+
   /* ---------- список ---------- */
+
 
   function matches(s, words) {
     if (!words.length) return true;
@@ -551,8 +1124,28 @@
       html += '<p class="garage__hint">Выберите авто — подставлю справочные нормо-часы для работ по двигателю.</p>';
     }
 
-    html += '</section>';
+    html += '<p class="garage__meta garage__meta--shared">База машин общая для всех телефонов: она загружается с сайта. На телефоне сохраняются только выбранное авто и смета.</p>' +
+      '<button class="garage__update" type="button" data-vupdate>Проверить обновления базы</button>' +
+    '</section>';
     return html;
+  }
+
+  function updateBase() {
+    toast("Проверяю обновления…");
+    if (!("serviceWorker" in navigator)) {
+      location.reload();
+      return;
+    }
+    var regs = navigator.serviceWorker.getRegistrations
+      ? navigator.serviceWorker.getRegistrations()
+      : Promise.resolve([]);
+    regs.then(function (list) {
+      return Promise.all(list.map(function (r) { return r.update(); }));
+    }).then(function () {
+      setTimeout(function () { location.reload(); }, 800);
+    }).catch(function () {
+      location.reload();
+    });
   }
 
   /* ---------- схемы и инструкции ---------- */
@@ -988,7 +1581,7 @@
 
   function renderBar() {
     var t = totals();
-    var n = state.cart.length;
+    var n = state.cart.length + state.extras.length;
     var bar = $("bar");
     if (!n) {
       bar.hidden = true;
@@ -1003,70 +1596,189 @@
 
   /* ---------- смета ---------- */
 
+  var extraFormOpen = false;
+  var lastExtraKind = "part";
+  var lastExtraUnit = "шт";
+
+  function optionHtml(value, text, selected) {
+    return '<option value="' + esc(value) + '"' + (selected ? " selected" : "") + '>' + esc(text) + '</option>';
+  }
+
+  function extraFormHtml() {
+    var units = EXTRA_UNITS.map(function (u) { return optionHtml(u, u, u === lastExtraUnit); }).join("");
+    return '<form class="extraform" id="extraForm"' + (extraFormOpen ? "" : " hidden") + '>' +
+      '<select id="extraKind" aria-label="Тип">' +
+        optionHtml("part", "Запчасть", lastExtraKind === "part") +
+        optionHtml("fluid", "Жидкость", lastExtraKind === "fluid") +
+      '</select>' +
+      '<input id="extraName" placeholder="Название" maxlength="80" autocomplete="off" aria-label="Название">' +
+      '<input id="extraQty" type="number" inputmode="decimal" min="0.01" max="999" step="0.01" value="1" placeholder="Кол-во" aria-label="Количество">' +
+      '<select id="extraUnit" aria-label="Единица">' + units + '</select>' +
+      '<input id="extraCost" class="extraform__wide" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Закупка за единицу, ₽" aria-label="Закупка">' +
+      '<div class="extraform__hint" id="extraPreview">Цена клиенту: —</div>' +
+      '<div class="extraform__actions">' +
+        '<button type="submit">Добавить</button>' +
+        '<button type="button" id="extraCancel">Отмена</button>' +
+      '</div>' +
+    '</form>';
+  }
+
+  function updateExtraPreview() {
+    var el = $("extraPreview");
+    if (!el) return;
+    var cost = parseFloat($("extraCost") ? $("extraCost").value : "");
+    var qty = parseFloat($("extraQty") ? $("extraQty").value : "");
+    var unit = $("extraUnit") ? $("extraUnit").value : "";
+    if (!isFinite(cost) || cost < 0) {
+      el.textContent = "Цена клиенту: —";
+      return;
+    }
+    if (!isFinite(qty) || qty <= 0) qty = 1;
+    var markup = parseFloat(state.markup);
+    if (!isFinite(markup) || markup < 0) markup = 0;
+    var price = Math.round(cost * (1 + markup / 100));
+    el.textContent = "Цена клиенту: " + rub(price) + " / " + unit + " · итого " + rub(Math.round(price * qty));
+  }
+
+  function renderSheetTotals() {
+    var t = totals();
+    $("sheetSum").textContent = rubRange(t.min, t.max);
+    var n = state.cart.length + state.extras.length;
+    var info = [n + " " + plural(n, "позиция", "позиции", "позиций")];
+    if (t.tmax) info.push("работы " + durRange(t.tmin, t.tmax));
+    $("sheetTime").textContent = info.join(" · ");
+
+    var breakdown = [];
+    if (state.cart.length) breakdown.push("Работы: " + rubRange(t.services.min, t.services.max));
+    if (t.extras.parts) breakdown.push("Запчасти: " + rub(t.extras.parts));
+    if (t.extras.fluids) breakdown.push("Жидкости: " + rub(t.extras.fluids));
+    $("sheetBreakdown").innerHTML = breakdown.map(function (s) { return "<span>" + esc(s) + "</span>"; }).join("");
+  }
+
+  function refreshExtras() {
+    state.extras.forEach(function (x, i) {
+      var row = document.querySelector('.extra[data-x="' + i + '"]');
+      if (!row) return;
+      var line = extraLine(x);
+      var calc = qtyText(x.qty) + " " + x.unit + " × " + nums(x.cost) + " ₽";
+      if (state.markup > 0) calc += " + " + state.markup + "%";
+      calc += " = " + rub(line);
+      var calcEl = row.querySelector(".extra__calc");
+      if (calcEl) calcEl.textContent = calc;
+      var sumEl = row.querySelector(".extra__sum");
+      if (sumEl) sumEl.textContent = rub(line);
+    });
+    renderSheetTotals();
+    renderBar();
+    updateExtraPreview();
+  }
+
   function renderSheet() {
-    if (!state.cart.length) {
+    if (!hasItems()) {
       closeSheet();
       return;
     }
 
     var html = "";
-    state.cart.forEach(function (item, i) {
-      var d = def(item);
-      if (!d) return;
-      var u = unitPrice(item);
-      var lineMin = u.min * item.qty;
-      var lineMax = u.max * item.qty;
+    var car = selectedCar();
 
-      if (d.perGram) {
+    if (car) {
+      html += '<div class="sheet__car">' + esc(carShort(car)) + '</div>';
+    }
+
+    if (state.cart.length) {
+      html += '<div class="sheet__section">Работы</div>';
+      state.cart.forEach(function (item, i) {
+        var d = def(item);
+        if (!d) return;
+        var u = unitPrice(item);
+        var lineMin = u.min * item.qty;
+        var lineMax = u.max * item.qty;
+
+        if (d.perGram) {
+          var grams = item.grams || GRAM_DEFAULT;
+          html += '<div class="item" data-i="' + i + '">' +
+            '<div class="item__text">' +
+              '<div class="item__name">' + esc(d.name) + '</div>' +
+              '<div class="item__sum">' + nums(d.base) + ' ₽ + ' + grams + ' г × ' + d.perGram + ' ₽ = ' + rubRange(lineMin, lineMax) + '</div>' +
+              '<div class="grams">' +
+                '<button type="button" data-g="-' + GRAM_STEP + '" aria-label="Меньше газа">−' + GRAM_STEP + '</button>' +
+                '<b>' + grams + ' г</b>' +
+                '<button type="button" data-g="' + GRAM_STEP + '" aria-label="Больше газа">+' + GRAM_STEP + '</button>' +
+              '</div>' +
+            '</div>' +
+            '<button class="item__del" type="button" data-del aria-label="Удалить">×</button>' +
+          '</div>';
+          return;
+        }
+
+        var carLine = item.car
+          ? '<div class="item__car">' + esc(item.car) + (item.nh ? " · " + fmtNorm(item.nh) : "") + '</div>'
+          : "";
+
         html += '<div class="item" data-i="' + i + '">' +
           '<div class="item__text">' +
             '<div class="item__name">' + esc(d.name) + '</div>' +
-            '<div class="item__sum">' + nums(d.base) + ' ₽ + ' + item.grams + ' г × ' + d.perGram + ' ₽ = ' + rubRange(lineMin, lineMax) + '</div>' +
-            '<div class="grams">' +
-              '<button type="button" data-g="-' + GRAM_STEP + '" aria-label="Меньше газа">−' + GRAM_STEP + '</button>' +
-              '<b>' + item.grams + ' г</b>' +
-              '<button type="button" data-g="' + GRAM_STEP + '" aria-label="Больше газа">+' + GRAM_STEP + '</button>' +
-            '</div>' +
+            '<div class="item__sum">' + rubRange(lineMin, lineMax) + '</div>' +
+            carLine +
+          '</div>' +
+          '<div class="step">' +
+            '<button type="button" data-dec aria-label="Меньше">−</button>' +
+            '<span>' + item.qty + '</span>' +
+            '<button type="button" data-inc aria-label="Больше">+</button>' +
           '</div>' +
           '<button class="item__del" type="button" data-del aria-label="Удалить">×</button>' +
         '</div>';
-        return;
-      }
+      });
+    }
 
-      var carLine = item.car
-        ? '<div class="item__car">' + esc(item.car) + (item.nh ? " · " + fmtNorm(item.nh) : "") + '</div>'
-        : "";
-
-      html += '<div class="item" data-i="' + i + '">' +
-        '<div class="item__text">' +
-          '<div class="item__name">' + esc(d.name) + '</div>' +
-          '<div class="item__sum">' + rubRange(lineMin, lineMax) + '</div>' +
-          carLine +
+    html += '<div class="extras" id="extras">' +
+      '<div class="extras__head">' +
+        '<div>' +
+          '<div class="extras__title">Запчасти и жидкости</div>' +
+          '<div class="extras__sub">Закупка + наценка. В PDF — только цена клиенту.</div>' +
         '</div>' +
-        '<div class="step">' +
-          '<button type="button" data-dec aria-label="Меньше">−</button>' +
-          '<span>' + item.qty + '</span>' +
-          '<button type="button" data-inc aria-label="Больше">+</button>' +
-        '</div>' +
-        '<button class="item__del" type="button" data-del aria-label="Удалить">×</button>' +
+        '<label class="extras__markup">Наценка <input id="markupInput" type="number" inputmode="numeric" min="0" max="500" step="5" value="' + esc(String(state.markup)) + '" aria-label="Наценка на запчасти и жидкости"> %</label>' +
       '</div>';
-    });
 
-    html += '<button class="addown" type="button" id="addOwn">+ Своя строка</button>' +
+    if (state.extras.length) {
+      state.extras.forEach(function (x, i) {
+        var line = extraLine(x);
+        var calc = qtyText(x.qty) + " " + esc(x.unit) + " × " + nums(x.cost) + " ₽";
+        if (state.markup > 0) calc += " + " + state.markup + "%";
+        calc += " = " + rub(line);
+        html += '<div class="extra" data-x="' + i + '">' +
+          '<div class="extra__text">' +
+            '<div class="extra__name"><span class="extra__tag">' + extraKindName(x.kind) + '</span>' + esc(x.name) + '</div>' +
+            '<div class="extra__calc">' + calc + '</div>' +
+          '</div>' +
+          '<div class="extra__sum">' + rub(line) + '</div>' +
+          '<button class="item__del" type="button" data-xdel aria-label="Удалить">×</button>' +
+        '</div>';
+      });
+    } else {
+      html += '<p class="extras__empty">Пока не добавлены. Если меняли деталь или жидкость — добавьте, наценка посчитается сама.</p>';
+    }
+
+    if (!extraFormOpen) {
+      html += '<button class="addown" type="button" id="addExtra">+ Добавить запчасть или жидкость</button>';
+    }
+    html += extraFormHtml() +
+    '</div>';
+
+    html += '<button class="addown" type="button" id="addOwn">+ Своя строка работы</button>' +
       '<form class="ownform" id="ownForm" hidden>' +
         '<input id="ownName" placeholder="Название работы" maxlength="60" autocomplete="off">' +
         '<input id="ownPrice" type="number" inputmode="numeric" min="0" step="100" placeholder="₽">' +
         '<button type="submit">Добавить в смету</button>' +
       '</form>';
 
-    $("sheetBody").innerHTML = html;
+    var body = $("sheetBody");
+    var scrollTop = body.scrollTop;
+    body.innerHTML = html;
+    body.scrollTop = scrollTop;
 
-    var t = totals();
-    $("sheetSum").textContent = rubRange(t.min, t.max);
-    var n = state.cart.length;
-    var info = [n + " " + plural(n, "позиция", "позиции", "позиций")];
-    info.push(t.tmax ? "работы " + durRange(t.tmin, t.tmax) : "без работ в боксе");
-    $("sheetTime").textContent = info.join(" · ");
+    renderSheetTotals();
 
     var own = $("addOwn");
     if (own) {
@@ -1103,6 +1815,95 @@
         renderList();
       });
     }
+
+    var addExtra = $("addExtra");
+    if (addExtra) {
+      addExtra.addEventListener("click", function () {
+        extraFormOpen = true;
+        renderSheet();
+        var name = $("extraName");
+        if (name) name.focus();
+      });
+    }
+
+    var extraCancel = $("extraCancel");
+    if (extraCancel) {
+      extraCancel.addEventListener("click", function () {
+        extraFormOpen = false;
+        renderSheet();
+      });
+    }
+
+    var extraKind = $("extraKind");
+    if (extraKind) {
+      extraKind.addEventListener("change", function () {
+        lastExtraKind = this.value === "fluid" ? "fluid" : "part";
+        lastExtraUnit = lastExtraKind === "fluid" ? "л" : "шт";
+        var unit = $("extraUnit");
+        if (unit) unit.value = lastExtraUnit;
+        updateExtraPreview();
+      });
+    }
+
+    var extraUnit = $("extraUnit");
+    if (extraUnit) {
+      extraUnit.addEventListener("change", function () {
+        lastExtraUnit = this.value;
+        updateExtraPreview();
+      });
+    }
+
+    var extraQty = $("extraQty");
+    if (extraQty) extraQty.addEventListener("input", updateExtraPreview);
+
+    var extraCost = $("extraCost");
+    if (extraCost) extraCost.addEventListener("input", updateExtraPreview);
+
+    var extraForm = $("extraForm");
+    if (extraForm) {
+      extraForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var name = $("extraName").value.trim();
+        var kind = $("extraKind").value === "fluid" ? "fluid" : "part";
+        var qty = parseFloat($("extraQty").value);
+        var cost = parseFloat($("extraCost").value);
+        var unit = $("extraUnit").value;
+        if (!name) { toast("Укажите название"); return; }
+        if (!isFinite(qty) || qty <= 0) { toast("Укажите количество"); return; }
+        if (!isFinite(cost) || cost < 0) { toast("Укажите закупку"); return; }
+        lastExtraKind = kind;
+        lastExtraUnit = unit;
+        state.extras.push({
+          id: "x-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+          kind: kind,
+          name: name,
+          qty: Math.min(Math.max(qty, 0.01), 999),
+          unit: unit,
+          cost: Math.max(cost, 0)
+        });
+        save();
+        extraFormOpen = true;
+        renderSheet();
+        renderBar();
+        toast("Запчасть или жидкость добавлена");
+        var next = $("extraName");
+        if (next) next.focus();
+      });
+    }
+
+    var markup = $("markupInput");
+    if (markup) {
+      markup.addEventListener("change", function () {
+        var v = parseFloat(this.value);
+        if (!isFinite(v) || v < 0) v = 0;
+        state.markup = Math.min(v, 500);
+        save();
+        refreshExtras();
+        var again = $("markupInput");
+        if (again) { again.focus(); again.select(); }
+      });
+    }
+
   }
 
   /* ---------- шторка: открыть / закрыть ---------- */
@@ -1110,10 +1911,11 @@
   var sheetOpen = false;
 
   function openSheet() {
-    if (!state.cart.length) return;
+    if (!hasItems()) return;
     if (sheetOpen) return;
     sheetOpen = true;
     $("sheet").hidden = false;
+    $("sheetBody").scrollTop = 0;
     renderSheet();
     requestAnimationFrame(function () {
       $("sheet").classList.add("is-open");
@@ -1124,6 +1926,7 @@
   function closeSheet(fromPop) {
     if (!sheetOpen) return;
     sheetOpen = false;
+    extraFormOpen = false;
     $("sheet").classList.remove("is-open");
     setTimeout(function () {
       if (!sheetOpen) $("sheet").hidden = true;
@@ -1133,8 +1936,36 @@
     }
   }
 
+  /* ---------- настройки ---------- */
+
+  var setOpen = false;
+
+  function openSettings() {
+    if (setOpen) return;
+    setOpen = true;
+    $("setSheet").hidden = false;
+    updateSyncUi();
+    requestAnimationFrame(function () {
+      $("setSheet").classList.add("is-open");
+    });
+    try { history.pushState({ set: 1 }, ""); } catch (e) { /* file:// */ }
+  }
+
+  function closeSettings(fromPop) {
+    if (!setOpen) return;
+    setOpen = false;
+    $("setSheet").classList.remove("is-open");
+    setTimeout(function () {
+      if (!setOpen) $("setSheet").hidden = true;
+    }, 240);
+    if (!fromPop) {
+      try { history.back(); } catch (e) { /* ignore */ }
+    }
+  }
+
   window.addEventListener("popstate", function () {
     if (guideOpen) closeGuide(true);
+    else if (setOpen) closeSettings(true);
     else if (sheetOpen) closeSheet(true);
   });
 
@@ -1142,26 +1973,208 @@
 
   function buildText() {
     var lines = ["Ремонтус44, Кострома"];
-    state.cart.forEach(function (item) {
-      var d = def(item);
-      if (!d) return;
-      var u = unitPrice(item);
-      var name = d.name;
-      if (d.perGram) name += ", " + item.grams + " г";
-      var qty = item.qty > 1 ? " × " + item.qty : "";
-      lines.push("• " + name + qty + " — " + rubRange(u.min * item.qty, u.max * item.qty));
-      if (item.car) {
-        lines.push("   " + item.car + (item.nh ? ", норматив " + fmtNorm(item.nh) : ""));
-      }
-    });
+
+    if (state.cart.length) {
+      lines.push("Работы:");
+      state.cart.forEach(function (item) {
+        var d = def(item);
+        if (!d) return;
+        var u = unitPrice(item);
+        var name = d.name;
+        if (d.perGram) name += ", " + (item.grams || GRAM_DEFAULT) + " г";
+        var qty = item.qty > 1 ? " × " + item.qty : "";
+        lines.push("• " + name + qty + " — " + rubRange(u.min * item.qty, u.max * item.qty));
+        if (item.car) {
+          lines.push("   " + item.car + (item.nh ? ", норматив " + fmtNorm(item.nh) : ""));
+        }
+      });
+    }
+
+    var parts = state.extras.filter(function (x) { return x.kind === "part"; });
+    var fluids = state.extras.filter(function (x) { return x.kind === "fluid"; });
+
+    if (parts.length) {
+      lines.push("Запчасти:");
+      parts.forEach(function (x) {
+        lines.push("• " + x.name + " — " + qtyText(x.qty) + " " + x.unit + " × " + rub(extraPrice(x)) + " = " + rub(extraLine(x)));
+      });
+    }
+
+    if (fluids.length) {
+      lines.push("Жидкости:");
+      fluids.forEach(function (x) {
+        lines.push("• " + x.name + " — " + qtyText(x.qty) + " " + x.unit + " × " + rub(extraPrice(x)) + " = " + rub(extraLine(x)));
+      });
+    }
 
     var t = totals();
     lines.push("");
     lines.push("Итого: " + rubRange(t.min, t.max));
     if (t.tmax) lines.push("Время работ: " + durRange(t.tmin, t.tmax));
     if (state.note) lines.push("Точную сумму скажу после осмотра.");
+    lines.push("");
+    lines.push("Сайт: " + SITE_SHORT);
+    lines.push("Телефон: " + phonePretty());
 
     return lines.join("\n");
+  }
+
+  /* ---------- печатная смета / PDF ---------- */
+
+  function pad2(n) {
+    return n < 10 ? "0" + n : String(n);
+  }
+
+  function dateRu() {
+    try {
+      return new Date().toLocaleString("ru-RU", {
+        day: "2-digit", month: "long", year: "numeric",
+        hour: "2-digit", minute: "2-digit"
+      });
+    } catch (e) {
+      return new Date().toLocaleString();
+    }
+  }
+
+  function pdTable(rows) {
+    return '<table class="pd__table">' +
+      '<thead><tr>' +
+        '<th class="pd__num">№</th>' +
+        '<th>Наименование</th>' +
+        '<th class="pd__num">Кол-во</th>' +
+        '<th class="pd__num">Цена</th>' +
+        '<th class="pd__num">Сумма</th>' +
+      '</tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+    '</table>';
+  }
+
+  function buildPrintDoc() {
+    var car = selectedCar();
+    var t = totals();
+    var parts = state.extras.filter(function (x) { return x.kind === "part"; });
+    var fluids = state.extras.filter(function (x) { return x.kind === "fluid"; });
+
+    var html = '<div class="pd">';
+    html += '<div class="pd__top">' +
+      '<div>' +
+        '<div class="pd__brand">Ремонтус44</div>' +
+        '<div class="pd__city">Кострома · выезд по городу · 9:00–19:00</div>' +
+        '<div class="pd__contacts">Сайт: ' + SITE_SHORT + ' · Телефон: ' + phonePretty() + '</div>' +
+      '</div>' +
+      '<div class="pd__doc">' +
+        '<div class="pd__title">Смета на ремонт</div>' +
+        '<div class="pd__date">' + esc(dateRu()) + '</div>' +
+      '</div>' +
+    '</div>';
+
+    html += '<div class="pd__car"><b>Автомобиль:</b> ' + (car ? esc(carShort(car)) : "не выбран") + '</div>';
+
+    if (state.cart.length) {
+      var rows = "";
+      state.cart.forEach(function (item, i) {
+        var d = def(item);
+        if (!d) return;
+        var u = unitPrice(item);
+        var lineMin = u.min * item.qty;
+        var lineMax = u.max * item.qty;
+        var grams = item.grams || GRAM_DEFAULT;
+        var note = d.perGram
+          ? '<div class="pd__note-line">' + esc(grams + " г × " + d.perGram + " ₽ + работа " + nums(d.base) + " ₽") + '</div>'
+          : "";
+        rows += '<tr>' +
+          '<td class="pd__num">' + (i + 1) + '</td>' +
+          '<td>' + esc(d.name) + note + '</td>' +
+          '<td class="pd__num">' + item.qty + '</td>' +
+          '<td class="pd__num">' + rubRange(u.min, u.max) + '</td>' +
+          '<td class="pd__num">' + rubRange(lineMin, lineMax) + '</td>' +
+        '</tr>';
+      });
+      html += '<h3 class="pd__section">Работы</h3>' + pdTable(rows);
+    }
+
+    if (parts.length) {
+      var pRows = "";
+      parts.forEach(function (x, i) {
+        pRows += '<tr>' +
+          '<td class="pd__num">' + (i + 1) + '</td>' +
+          '<td>' + esc(x.name) + '</td>' +
+          '<td class="pd__num">' + esc(qtyText(x.qty) + " " + x.unit) + '</td>' +
+          '<td class="pd__num">' + rub(extraPrice(x)) + '</td>' +
+          '<td class="pd__num">' + rub(extraLine(x)) + '</td>' +
+        '</tr>';
+      });
+      html += '<h3 class="pd__section">Запчасти</h3>' + pdTable(pRows);
+    }
+
+    if (fluids.length) {
+      var fRows = "";
+      fluids.forEach(function (x, i) {
+        fRows += '<tr>' +
+          '<td class="pd__num">' + (i + 1) + '</td>' +
+          '<td>' + esc(x.name) + '</td>' +
+          '<td class="pd__num">' + esc(qtyText(x.qty) + " " + x.unit) + '</td>' +
+          '<td class="pd__num">' + rub(extraPrice(x)) + '</td>' +
+          '<td class="pd__num">' + rub(extraLine(x)) + '</td>' +
+        '</tr>';
+      });
+      html += '<h3 class="pd__section">Жидкости</h3>' + pdTable(fRows);
+    }
+
+    html += '<div class="pd__totals">';
+    if (state.cart.length) {
+      html += '<div><span>Работы</span><b>' + rubRange(t.services.min, t.services.max) + '</b></div>';
+    }
+    if (t.extras.parts) {
+      html += '<div><span>Запчасти</span><b>' + rub(t.extras.parts) + '</b></div>';
+    }
+    if (t.extras.fluids) {
+      html += '<div><span>Жидкости</span><b>' + rub(t.extras.fluids) + '</b></div>';
+    }
+    html += '<div class="pd__grand"><span>Итого</span><b>' + rubRange(t.min, t.max) + '</b></div>';
+    html += '</div>';
+
+    if (state.note) {
+      html += '<p class="pd__note">Точную сумму мастер называет после осмотра автомобиля.</p>';
+    }
+    html += '<p class="pd__foot">Смета носит справочный характер. Цены указаны на дату сметы. Запчасти и жидкости — по согласованию с клиентом.<br>Ремонтус44 · ' + SITE_SHORT + ' · ' + phonePretty() + '</p>';
+    html += '</div>';
+
+    return html;
+  }
+
+  function printEstimate() {
+    if (!hasItems()) {
+      toast("Смета пустая");
+      return;
+    }
+    var doc = $("printDoc");
+    if (!doc) {
+      toast("Печать недоступна");
+      return;
+    }
+    doc.innerHTML = buildPrintDoc();
+
+    var oldTitle = PAGE_TITLE;
+    var d = new Date();
+    document.title = "Смета Ремонтус44 " + d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()) +
+      " " + pad2(d.getHours()) + "-" + pad2(d.getMinutes());
+
+    var restored = false;
+    function restore() {
+      if (restored) return;
+      restored = true;
+      document.title = oldTitle;
+      window.removeEventListener("afterprint", restore);
+    }
+    window.addEventListener("afterprint", restore);
+    setTimeout(restore, 10000);
+
+    try {
+      window.print();
+    } catch (e) {
+      toast("Не удалось открыть печать. Меню браузера → Печать.");
+    }
   }
 
   function copy(text) {
@@ -1186,13 +2199,14 @@
   }
 
   function copyEstimate() {
-    if (!state.cart.length) return;
+    if (!hasItems()) return;
     copy(buildText()).then(function (ok) {
       toast(ok ? "Смета скопирована" : "Не получилось скопировать");
     });
   }
 
   function shareEstimate() {
+    if (!hasItems()) return;
     var text = buildText();
     if (navigator.share) {
       navigator.share({ text: text }).catch(function () { /* отменили — не ошибка */ });
@@ -1291,6 +2305,11 @@
       return;
     }
 
+    if (e.target.closest("[data-vupdate]")) {
+      updateBase();
+      return;
+    }
+
     var btn = e.target.closest("[data-add]");
     if (!btn) return;
     var id = btn.getAttribute("data-add");
@@ -1338,6 +2357,18 @@
   $("sheet").addEventListener("click", function (e) {
     if (e.target.closest("[data-close]")) { closeSheet(); return; }
 
+    var extraEl = e.target.closest(".extra");
+    if (extraEl && e.target.closest("[data-xdel]")) {
+      var xi = parseInt(extraEl.getAttribute("data-x"), 10);
+      if (!isNaN(xi)) {
+        state.extras.splice(xi, 1);
+        save();
+        renderSheet();
+        renderBar();
+      }
+      return;
+    }
+
     var itemEl = e.target.closest(".item");
     if (!itemEl) return;
     var i = parseInt(itemEl.getAttribute("data-i"), 10);
@@ -1370,11 +2401,15 @@
 
   $("copyBtn").addEventListener("click", copyEstimate);
   $("shareBtn").addEventListener("click", shareEstimate);
+  $("pdfBtn").addEventListener("click", printEstimate);
+  if ($("quickPdf")) $("quickPdf").addEventListener("click", printEstimate);
 
   $("clearBtn").addEventListener("click", function () {
-    if (!state.cart.length) return;
-    if (!window.confirm("Очистить смету?")) return;
+    if (!hasItems()) return;
+    if (!window.confirm("Очистить смету, запчасти и жидкости?")) return;
     state.cart = [];
+    state.extras = [];
+    extraFormOpen = false;
     save();
     closeSheet();
     renderBar();
@@ -1386,6 +2421,114 @@
     state.note = this.checked;
     save();
   });
+
+  /* ---------- настройки: облако и контакты ---------- */
+
+  $("openSettings").addEventListener("click", openSettings);
+
+  $("setSheet").addEventListener("click", function (e) {
+    if (e.target.closest("[data-sclose]")) closeSettings();
+  });
+
+  $("syncCreate").addEventListener("click", function () {
+    if (state.syncCode) return;
+    state.syncCode = genCode();
+    state.syncUpdatedAt = 0;
+    state.syncDirty = hasItems();
+    persist();
+    updateSyncUi();
+    setSyncStatus("Создаю код…");
+    pushSync(false);
+  });
+
+  $("syncJoin").addEventListener("click", function () {
+    var code = normalizeCode($("syncCodeIn").value);
+    if (code.length !== SYNC_LEN) {
+      toast("Код — 8 символов");
+      $("syncCodeIn").focus();
+      return;
+    }
+    if (state.syncCode === code) {
+      setSyncStatus("Этот код уже подключён");
+      return;
+    }
+    if (state.syncCode && !window.confirm("Подключиться к другому коду? Текущий код будет заменён.")) return;
+
+    state.syncCode = code;
+    state.syncUpdatedAt = 0;
+    state.syncDirty = hasItems();
+    persist();
+    updateSyncUi();
+    setSyncStatus("Ищу смету…");
+    pullSync({ manual: true, join: true, createIfEmpty: true });
+  });
+
+  $("syncCodeIn").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      $("syncJoin").click();
+    }
+  });
+
+  $("syncCopyCode").addEventListener("click", function () {
+    if (!state.syncCode) return;
+    copy(formatCode(state.syncCode)).then(function (ok) {
+      toast(ok ? "Код скопирован" : "Не получилось скопировать");
+    });
+  });
+
+  $("syncPush").addEventListener("click", function () { pushSync(false); });
+  $("syncPull").addEventListener("click", function () { pullSync({ manual: true }); });
+
+  $("syncShareLink").addEventListener("click", function () {
+    if (!state.syncCode) return;
+    var url = SITE_URL + "calc/?sync=" + encodeURIComponent(state.syncCode);
+    if (navigator.share) {
+      navigator.share({
+        title: "Ремонтус44 — смета",
+        text: "Смета Ремонтус44",
+        url: url
+      }).catch(function () { /* отменили — не ошибка */ });
+    } else {
+      copy(url).then(function (ok) {
+        toast(ok ? "Ссылка скопирована" : "Не получилось скопировать");
+      });
+    }
+  });
+
+  $("syncOff").addEventListener("click", function () {
+    if (!state.syncCode) return;
+    if (!window.confirm("Отключить облако? Смета останется на этом телефоне.")) return;
+    state.syncCode = "";
+    state.syncUpdatedAt = 0;
+    state.syncDirty = false;
+    persist();
+    updateSyncUi();
+    setSyncStatus("");
+    toast("Облако отключено");
+  });
+
+  $("copySite").addEventListener("click", function () {
+    copy(SITE_URL).then(function (ok) {
+      toast(ok ? "Адрес сайта скопирован" : "Не получилось скопировать");
+    });
+  });
+
+  $("showPhone").addEventListener("click", function () {
+    $("phoneView").textContent = phonePretty();
+    $("showPhone").hidden = true;
+    $("copyPhone").hidden = false;
+  });
+
+  $("copyPhone").addEventListener("click", function () {
+    copy(phonePretty()).then(function (ok) {
+      toast(ok ? "Телефон скопирован" : "Не получилось скопировать");
+    });
+  });
+
+  $("setUpdateBase").addEventListener("click", updateBase);
+
+  syncInit();
 
   /* ---------- офлайн ---------- */
 
