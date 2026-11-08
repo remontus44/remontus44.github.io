@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Заказы — Ремонтус44</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#15803d">
+<meta name="color-scheme" content="light">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Заказы">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="orders.css">
+</head>
+<body class="orders-page">
+
+<header class="head">
+  <div class="head__row">
+    <span class="head__brand">Ремонтус44</span>
+    <span class="head__right">
+      <span class="head__title">заказы</span>
+      <a class="head__link" href="./">← калькулятор</a>
+    </span>
+  </div>
+</header>
+
+<main class="orders">
+
+  <section class="panel" id="setupView" hidden>
+    <h1 class="panel__title">Подключение базы</h1>
+    <p class="panel__text">Вставьте Project URL и anon public key из Supabase. Ключ публичный — заказы защищены входом по email и паролю.</p>
+    <form class="form" id="setupForm">
+      <label class="field">
+        <span>Project URL</span>
+        <input id="setupUrl" type="url" placeholder="https://xxxx.supabase.co" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="field">
+        <span>anon public key</span>
+        <textarea id="setupKey" rows="3" placeholder="eyJhbGci... или sb_publishable_..." autocomplete="off" spellcheck="false"></textarea>
+      </label>
+      <button class="btn btn--primary" type="submit">Сохранить настройки</button>
+    </form>
+    <div class="panel__note">
+      <b>Если база ещё не создана:</b>
+      <ol>
+        <li>Создайте проект на supabase.com.</li>
+        <li>SQL Editor → выполните файл <a href="supabase/schema.sql" target="_blank" rel="noopener">supabase/schema.sql</a>.</li>
+        <li>Authentication → Users → Add user: email и пароль, включите Auto Confirm.</li>
+        <li>Project Settings → API → скопируйте Project URL и anon public key сюда.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="panel" id="loginView" hidden>
+    <h1 class="panel__title">Вход в базу</h1>
+    <p class="panel__text">Заказы, статистика и акты. Вход по email и паролю мастера.</p>
+    <form class="form" id="loginForm">
+      <label class="field">
+        <span>Email</span>
+        <input id="loginEmail" type="email" autocomplete="username" required>
+      </label>
+      <label class="field">
+        <span>Пароль</span>
+        <input id="loginPassword" type="password" autocomplete="current-password" required>
+      </label>
+      <button class="btn btn--primary" type="submit">Войти</button>
+    </form>
+    <button class="panel__link" id="signupBtn" type="button">Создать аккаунт</button>
+    <p class="panel__status" id="loginStatus"></p>
+    <button class="panel__link panel__link--muted" id="resetConfigBtn" type="button">Изменить настройки Supabase</button>
+  </section>
+
+  <section id="mainView" hidden>
+    <div class="orders__top">
+      <div>
+        <h1 class="orders__title">Заказы</h1>
+        <div class="orders__user" id="userEmail"></div>
+      </div>
+      <div class="orders__topbtns">
+        <button class="orders__link" id="logoutBtn" type="button">Выйти</button>
+      </div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <div class="period">
+      <div class="period__dates">
+        <label class="field field--date"><span>С</span><input id="fromDate" type="date"></label>
+        <label class="field field--date"><span>По</span><input id="toDate" type="date"></label>
+      </div>
+      <div class="period__btns">
+        <button class="period__btn" data-period="month" type="button">Месяц</button>
+        <button class="period__btn" data-period="year" type="button">Год</button>
+        <button class="period__btn" data-period="all" type="button">Всё время</button>
+      </div>
+    </div>
+
+    <div class="orders__actions">
+      <button class="btn btn--primary" id="newOrderBtn" type="button">+ Новый заказ</button>
+      <button class="btn btn--ghost" id="refreshBtn" type="button">Обновить</button>
+    </div>
+
+    <div class="orders__list" id="ordersList"></div>
+    <p class="orders__empty" id="ordersEmpty" hidden>Заказов пока нет. Сделайте смету в калькуляторе и нажмите «Сохранить заказ».</p>
+  </section>
+
+</main>
+
+<div class="sheet" id="editorSheet" hidden>
+  <div class="sheet__backdrop" data-eclose></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="editorTitle">
+    <div class="sheet__handle" aria-hidden="true"></div>
+    <div class="sheet__head">
+      <h2 id="editorTitle">Заказ</h2>
+      <button class="sheet__close" type="button" data-eclose aria-label="Закрыть">×</button>
+    </div>
+    <div class="sheet__body" id="editorBody"></div>
+    <div class="sheet__foot">
+      <div class="editor__totals" id="editorTotals"></div>
+      <div class="sheet__actions">
+        <button class="btn btn--primary btn--wide" id="saveEditorBtn" type="button">Сохранить заказ</button>
+        <button class="btn btn--ghost" id="actEditorBtn" type="button">Акт PDF</button>
+        <button class="btn btn--ghost" id="deleteEditorBtn" type="button">Удалить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="printdoc" id="printDoc" aria-hidden="true"></div>
+
+<script src="supabase-config.js"></script>
+<script src="supabase.js"></script>
+<script src="act.js"></script>
+<script src="orders.js"></script>
+</body>
+</html>

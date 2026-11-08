@@ -82,11 +82,13 @@
         </div>
         <div class="totals__breakdown" id="sheetBreakdown"></div>
         <div class="totals__time" id="sheetTime">—</div>
+        <div class="totals__order" id="sheetOrder"></div>
       </div>
       <div class="sheet__actions">
-        <button class="btn btn--primary" id="pdfBtn" type="button">PDF / печать</button>
-        <button class="btn btn--ghost" id="copyBtn" type="button">Копировать</button>
-        <button class="btn btn--ghost" id="shareBtn" type="button">Поделиться</button>
+        <button class="btn btn--primary" id="saveOrderBtn" type="button">Сохранить заказ</button>
+        <button class="btn btn--ghost" id="pdfBtn" type="button">Смета PDF</button>
+        <button class="btn btn--ghost" id="actBtn" type="button">Акт PDF</button>
+        <button class="btn btn--ghost" id="shareBtn" type="button">Отправить</button>
         <button class="btn btn--plain btn--wide" id="clearBtn" type="button">Очистить</button>
       </div>
     </div>
@@ -174,6 +176,19 @@
       </section>
 
       <section class="box">
+        <div class="box__head">
+          <div>
+            <div class="box__title">База заказов</div>
+            <div class="box__sub">Заказы, статистика, акты</div>
+          </div>
+          <span class="cloud__state" id="dbState">проверка…</span>
+        </div>
+        <p class="box__text" id="dbText">Заказы сохраняются в Supabase. Вход по email и паролю.</p>
+        <a class="box__btn" href="orders.html" target="_blank" rel="noopener">Открыть базу заказов</a>
+        <p class="box__text box__text--small" id="dbUser"></p>
+      </section>
+
+      <section class="box">
         <div class="box__title">База и обновления</div>
         <p class="box__text">Справочник машин загружается с сайта и одинаков на всех телефонах. Смета хранится на этом телефоне, а с включённым облаком — ещё и на сервере в зашифрованном виде.</p>
         <button class="box__btn" id="setUpdateBase" type="button">Проверить обновления базы</button>
@@ -191,6 +206,9 @@
 <script src="data/cars.js"></script>
 <script src="data/labor.js"></script>
 <script src="data/guides.js"></script>
+<script src="supabase-config.js"></script>
+<script src="supabase.js"></script>
+<script src="act.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
